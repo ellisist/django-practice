@@ -1,2 +1,2 @@
 # django-practice
-A repo for projects meant to learn/practice things related to Django
+A repo for projects created to learn/practice things related to Django
