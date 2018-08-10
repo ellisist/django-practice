@@ -1,10 +1,13 @@
 import os
 import sys
+import hashlib
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageDraw
 from django.urls import path
 from django.core.wsgi import get_wsgi_application
+from django.core.cache import cache  # The backend cache system can be changed with CACHES setting
 from django.http import HttpResponse, HttpResponseBadRequest
+from django.views.decorators.http import etag
 from django.conf import settings
 from django import forms
 
@@ -40,14 +43,30 @@ class ImageForm(forms.Form):
         """generate an image of the given type and return as raw bytes"""
         height = self.cleaned_data['height']
         width = self.cleaned_data['width']
-        image = Image.new('RGB', (width, height))
-        content = BytesIO()
-        image.save(content, image_format)
-        content.seek(0)
+        key = '{}.{}.{}'.format(height, width, image_format)
+        content = cache.get(key)
+        if content is None:
+            image = Image.new('RGB', (width, height))
+            draw = ImageDraw.Draw(image)
+            text = '{} X {}'.format(width, height)
+            textwidth, textheight = draw.textsize(text)
+            if textwidth < width and textheight < height:
+                texttop = (height - textheight) // 2
+                textleft = (width - textwidth) // 2
+                draw.text((textleft, texttop), text, fill=(255, 255, 255))
+            content = BytesIO()
+            image.save(content, image_format)
+            content.seek(0)
         return content
 
 
 #  views.py
+def generate_etag(request, width, height):
+    content = 'Placeholder: {} x {}'.format(width, height)
+    return hashlib.sha1(content.encode('utf-8')).hexdigest()
+
+
+@etag(generate_etag)
 def placeholder(request, width, height):
     form = ImageForm({'height': height, 'width': width})
     if form.is_valid():
